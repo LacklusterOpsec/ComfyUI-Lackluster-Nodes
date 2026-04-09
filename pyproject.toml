@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-lackluster-nodes"
+version = "1.0.0"
+description = "Custom ComfyUI nodes for AllTalk TTS integration"
+requires-python = ">=3.8"
+dependencies = [
+    "requests",
+    "numpy",
+]
+
+[tool.comfy]
+PublisherId = "lackluster"
+DisplayName = "ComfyUI Lackluster Nodes"
+Icon = ""
