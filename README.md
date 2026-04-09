@@ -39,10 +39,17 @@ AllTalk can be installed using two methods:
 
 #### Method 1: Using atsetup.bat (Recommended for Windows)
 
-1. Download AllTalk from the [official repository](https://github.com/erew123/alltalk_tts)
-2. Run `atsetup.bat` to set up the environment
-3. Follow the installation prompts
-4. Start the AllTalk server
+1. Clone AllTalk and switch to the betav2 branch:
+   ```bash
+   git clone -b betav2 https://github.com/erew123/alltalk_tts.git
+   ```
+2. Navigate to the AllTalk directory:
+   ```bash
+   cd alltalk_tts
+   ```
+3. Run `atsetup.bat` to set up the environment
+4. Follow the installation prompts
+5. Start the AllTalk server
 
 #### Method 2: Using uv (Alternative)
 
@@ -53,9 +60,9 @@ If you prefer using [uv](https://github.com/astral-sh/uv) (a fast Python package
    pip install uv
    ```
 
-2. Clone AllTalk:
+2. Clone AllTalk on the betav2 branch:
    ```bash
-   git clone https://github.com/erew123/alltalk_tts.git
+   git clone -b betav2 https://github.com/erew123/alltalk_tts.git
    cd alltalk_tts
    ```
 
