@@ -389,9 +389,13 @@ class AllTalkTTSNode:
                     f"Header (hex): {header}\n"
                     f"Fix: Verify AllTalk is configured to output WAV format in settings."
                 )
-            
+
+            # Convert numpy array to PyTorch tensor (required by ComfyUI)
+            import torch
+            audio_tensor = torch.from_numpy(audio_data)
+
             audio_dict = {
-                "waveform": audio_data,
+                "waveform": audio_tensor,
                 "sample_rate": sample_rate
             }
             
