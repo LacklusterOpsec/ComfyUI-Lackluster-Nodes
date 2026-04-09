@@ -127,59 +127,71 @@ class AllTalkTTSNode:
                 riff = f.read(4)
                 if riff != b'RIFF':
                     raise Exception("Not a valid WAV file")
-                
+
                 file_size = struct.unpack('<I', f.read(4))[0]
                 wave_header = f.read(4)
                 if wave_header != b'WAVE':
                     raise Exception("Not a valid WAV file")
-                
+
                 # Find fmt chunk
                 fmt_data = None
                 while True:
                     chunk_id = f.read(4)
-                    if not chunk_id:
+                    if not chunk_id or len(chunk_id) < 4:
                         raise Exception("fmt chunk not found")
                     chunk_size = struct.unpack('<I', f.read(4))[0]
-                    chunk_data = f.read(chunk_size)
                     
                     if chunk_id == b'fmt ':
-                        fmt_data = chunk_data
+                        fmt_data = f.read(chunk_size)
                         break
-                    # Skip other chunks (account for padding)
+                    else:
+                        # Skip this chunk
+                        f.seek(chunk_size, 1)
+                    
+                    # Chunks are word-aligned (pad to even byte boundary)
                     if chunk_size % 2 == 1:
-                        f.read(1)  # Padding byte
-            
-            # Parse fmt chunk
-            audio_format = struct.unpack('<H', fmt_data[0:2])[0]
-            n_channels = struct.unpack('<H', fmt_data[2:4])[0]
-            sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
-            byte_rate = struct.unpack('<I', fmt_data[8:12])[0]
-            block_align = struct.unpack('<H', fmt_data[12:14])[0]
-            bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
-            
-            # audio_format: 1=PCM, 3=IEEE float, 6=mulaw, 7=alaw
-            if audio_format not in [1, 3]:
-                raise Exception(f"Unsupported audio format tag: {audio_format}")
-            
-            # Read data chunk
-            with open(file_path, "rb") as f:
-                f.seek(0)
+                        f.seek(1, 1)  # Skip padding byte
+
+                if not fmt_data:
+                    raise Exception("fmt chunk data is empty")
+
+                # Parse fmt chunk
+                audio_format = struct.unpack('<H', fmt_data[0:2])[0]
+                n_channels = struct.unpack('<H', fmt_data[2:4])[0]
+                sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
+                byte_rate = struct.unpack('<I', fmt_data[8:12])[0]
+                block_align = struct.unpack('<H', fmt_data[12:14])[0]
+                bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
+
+                # audio_format: 1=PCM, 3=IEEE float, 6=mulaw, 7=alaw
+                if audio_format not in [1, 3]:
+                    raise Exception(f"Unsupported audio format tag: {audio_format}")
+
+                # Read data chunk
+                frames = None
                 while True:
                     chunk_id = f.read(4)
-                    if not chunk_id:
+                    if not chunk_id or len(chunk_id) < 4:
                         raise Exception("data chunk not found")
                     chunk_size = struct.unpack('<I', f.read(4))[0]
+                    
                     if chunk_id == b'data':
                         frames = f.read(chunk_size)
                         break
-                    # Skip this chunk (account for padding)
-                    f.seek(chunk_size, 1)
+                    else:
+                        # Skip this chunk
+                        f.seek(chunk_size, 1)
+                    
+                    # Chunks are word-aligned (pad to even byte boundary)
                     if chunk_size % 2 == 1:
-                        f.read(1)  # Padding byte
-            
+                        f.seek(1, 1)  # Skip padding byte
+
+                if frames is None:
+                    raise Exception("data chunk is empty")
+
             n_frames = len(frames) // block_align
             sample_width = bits_per_sample // 8
-            
+
             # Parse audio data based on format
             if audio_format == 1:  # PCM
                 if sample_width == 1:
@@ -207,24 +219,24 @@ class AllTalkTTSNode:
                     max_val = 2147483648.0
                 else:
                     raise Exception(f"Unsupported sample width: {sample_width}")
-                
+
                 audio_data = np.frombuffer(frames, dtype=dtype).astype(np.float32) / max_val
-            
+
             elif audio_format == 3:  # IEEE 32-bit float
                 audio_data = np.frombuffer(frames, dtype=np.float32)
                 # Already in float format, normalize to [-1, 1] if needed
                 max_val = np.max(np.abs(audio_data))
                 if max_val > 1.0:
                     audio_data = audio_data / max_val
-            
+
             # Reshape for channel compatibility
             if n_channels > 1:
                 audio_data = audio_data.reshape(-1, n_channels).T
             else:
                 audio_data = audio_data.reshape(1, -1)
-            
+
             return audio_data, sample_rate
-        
+
         except struct.error as e:
             raise Exception(f"WAV parsing error: Invalid WAV structure - {str(e)}")
         except Exception as e:
@@ -314,42 +326,56 @@ class AllTalkTTSNode:
                 raise Exception(f"TTS generation failed: {error_detail}")
             
             response_data = response.json()
-            
+
             if response_data.get("status") != "generate-success":
                 raise Exception(f"TTS generation failed: {response_data.get('error', 'Unknown error')}")
-            
+
             # Get the audio file path from response
-            audio_url = response_data.get("output_cache_url") or response_data.get("output_file_url")
+            # AllTalk V1 returns complete URL, V2 returns relative path
+            audio_url = response_data.get("output_file_url") or response_data.get("output_cache_url")
             output_path = response_data.get("output_file_path")
-            
+
             if not audio_url:
-                raise Exception("No audio URL returned from AllTalk server")
-            
+                raise Exception(f"No audio URL returned from AllTalk server. Response data keys: {list(response_data.keys())}")
+
             # Download the audio file
             if audio_url.startswith("/"):
-                # Relative URL - construct full URL
+                # Relative URL (V2) - construct full URL
                 full_audio_url = f"{alltalk_server_url}{audio_url}"
             else:
+                # Complete URL (V1)
                 full_audio_url = audio_url
-            
+
             audio_response = requests.get(full_audio_url, timeout=30)
             if audio_response.status_code != 200:
-                raise Exception(f"Failed to download audio file: {audio_response.status_code}")
-            
+                raise Exception(f"Failed to download audio file from {full_audio_url}: {audio_response.status_code} - {audio_response.text[:200]}")
+
             # Save audio file to ComfyUI output directory
             output_filename = os.path.basename(output_path) if output_path else "alltalk_audio.wav"
             local_audio_path = os.path.join(self.output_dir, output_filename)
-            
+
             with open(local_audio_path, "wb") as f:
                 f.write(audio_response.content)
             
             # Detect audio format
             format_type, format_desc = self._detect_audio_format(local_audio_path)
             file_size = os.path.getsize(local_audio_path)
-            
+
             # Parse based on format
             if format_type == "wav":
-                audio_data, sample_rate = self._parse_wav(local_audio_path)
+                try:
+                    audio_data, sample_rate = self._parse_wav(local_audio_path)
+                except Exception as e:
+                    # Add debug info for WAV parsing errors
+                    with open(local_audio_path, "rb") as f:
+                        header = f.read(64).hex()
+                    raise Exception(
+                        f"WAV parsing failed: {str(e)}\n"
+                        f"File: {local_audio_path}\n"
+                        f"Size: {file_size} bytes\n"
+                        f"Header (hex): {header[:128]}\n"
+                        f"This may indicate a corrupted file or unsupported WAV format."
+                    )
             elif format_type in ["mp3", "ogg", "m4a", "flac"]:
                 audio_data, sample_rate = self._parse_audio_generic(local_audio_path, format_type)
             else:
