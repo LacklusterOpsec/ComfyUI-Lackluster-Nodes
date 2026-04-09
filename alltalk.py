@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import folder_paths
 import struct
+import numpy as np
 
 class AllTalkTTSNode:
     """
@@ -90,7 +91,7 @@ class AllTalkTTSNode:
             
             # WAV: RIFF....WAVE
             if header[:4] == b'RIFF' and header[8:12] == b'WAVE':
-                return ("wav", "PCM WAV audio")
+                return ("wav", "WAV audio")
             
             # MP3: FF FB or FF FA (MPEG sync)
             if (header[0] == 0xFF) and ((header[1] & 0xE0) == 0xE0):
@@ -118,21 +119,67 @@ class AllTalkTTSNode:
     def _parse_wav(self, file_path):
         """
         Parse WAV file and extract waveform and sample rate.
-        Supports 8, 16, 24, and 32-bit audio.
+        Supports PCM (8, 16, 24, 32-bit) and IEEE 32-bit float audio.
         """
-        import wave
-        import numpy as np
-        
         try:
-            with wave.open(file_path, "rb") as wav_file:
-                n_channels = wav_file.getnchannels()
-                sample_width = wav_file.getsampwidth()
-                sample_rate = wav_file.getframerate()
-                n_frames = wav_file.getnframes()
+            with open(file_path, "rb") as f:
+                # Read RIFF header
+                riff = f.read(4)
+                if riff != b'RIFF':
+                    raise Exception("Not a valid WAV file")
                 
-                frames = wav_file.readframes(n_frames)
+                file_size = struct.unpack('<I', f.read(4))[0]
+                wave_header = f.read(4)
+                if wave_header != b'WAVE':
+                    raise Exception("Not a valid WAV file")
                 
-                # Determine dtype based on sample width
+                # Find fmt chunk
+                fmt_data = None
+                while True:
+                    chunk_id = f.read(4)
+                    if not chunk_id:
+                        raise Exception("fmt chunk not found")
+                    chunk_size = struct.unpack('<I', f.read(4))[0]
+                    chunk_data = f.read(chunk_size)
+                    
+                    if chunk_id == b'fmt ':
+                        fmt_data = chunk_data
+                        break
+                    # Skip other chunks (account for padding)
+                    if chunk_size % 2 == 1:
+                        f.read(1)  # Padding byte
+            
+            # Parse fmt chunk
+            audio_format = struct.unpack('<H', fmt_data[0:2])[0]
+            n_channels = struct.unpack('<H', fmt_data[2:4])[0]
+            sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
+            byte_rate = struct.unpack('<I', fmt_data[8:12])[0]
+            block_align = struct.unpack('<H', fmt_data[12:14])[0]
+            bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
+            
+            # audio_format: 1=PCM, 3=IEEE float, 6=mulaw, 7=alaw
+            if audio_format not in [1, 3]:
+                raise Exception(f"Unsupported audio format tag: {audio_format}")
+            
+            # Read data chunk
+            with open(file_path, "rb") as f:
+                f.seek(0)
+                while True:
+                    chunk_id = f.read(4)
+                    if not chunk_id:
+                        raise Exception("data chunk not found")
+                    chunk_size = struct.unpack('<I', f.read(4))[0]
+                    if chunk_id == b'data':
+                        frames = f.read(chunk_size)
+                        break
+                    # Skip this chunk
+                    f.seek(chunk_size, 1)
+            
+            n_frames = len(frames) // block_align
+            sample_width = bits_per_sample // 8
+            
+            # Parse audio data based on format
+            if audio_format == 1:  # PCM
                 if sample_width == 1:
                     dtype = np.uint8
                     max_val = 128.0
@@ -160,16 +207,25 @@ class AllTalkTTSNode:
                     raise Exception(f"Unsupported sample width: {sample_width}")
                 
                 audio_data = np.frombuffer(frames, dtype=dtype).astype(np.float32) / max_val
-                
-                # Reshape for channel compatibility
-                if n_channels > 1:
-                    audio_data = audio_data.reshape(-1, n_channels).T
-                else:
-                    audio_data = audio_data.reshape(1, -1)
-                
-                return audio_data, sample_rate
+            
+            elif audio_format == 3:  # IEEE 32-bit float
+                audio_data = np.frombuffer(frames, dtype=np.float32)
+                # Already in float format, normalize to [-1, 1] if needed
+                max_val = np.max(np.abs(audio_data))
+                if max_val > 1.0:
+                    audio_data = audio_data / max_val
+            
+            # Reshape for channel compatibility
+            if n_channels > 1:
+                audio_data = audio_data.reshape(-1, n_channels).T
+            else:
+                audio_data = audio_data.reshape(1, -1)
+            
+            return audio_data, sample_rate
         
-        except wave.Error as e:
+        except struct.error as e:
+            raise Exception(f"WAV parsing error: Invalid WAV structure - {str(e)}")
+        except Exception as e:
             raise Exception(f"WAV parsing error: {str(e)}")
     
     def _parse_audio_generic(self, file_path, format_type):
