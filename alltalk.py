@@ -391,10 +391,12 @@ class AllTalkTTSNode:
                 )
 
             # Convert numpy array to PyTorch tensor (required by ComfyUI)
-            # ComfyUI's AudioSaveHelper expects shape (samples, channels)
-            # but our parsers return (channels, samples), so we need to transpose
+            # ComfyUI expects waveform shape: (batch, channels, samples)
+            # Our parsers return (channels, samples), so we just add batch dimension
             import torch
-            audio_tensor = torch.from_numpy(audio_data.T)
+            # Copy array to make it writable (PyTorch requirement)
+            audio_data_copy = audio_data.copy()
+            audio_tensor = torch.from_numpy(audio_data_copy).unsqueeze(0)
 
             audio_dict = {
                 "waveform": audio_tensor,
