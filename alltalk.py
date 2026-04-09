@@ -172,8 +172,10 @@ class AllTalkTTSNode:
                     if chunk_id == b'data':
                         frames = f.read(chunk_size)
                         break
-                    # Skip this chunk
+                    # Skip this chunk (account for padding)
                     f.seek(chunk_size, 1)
+                    if chunk_size % 2 == 1:
+                        f.read(1)  # Padding byte
             
             n_frames = len(frames) // block_align
             sample_width = bits_per_sample // 8
