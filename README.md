@@ -70,7 +70,7 @@ If you prefer using [uv](https://github.com/astral-sh/uv) (a fast Python package
    ```bash
    uv venv
    .venv\Scripts\activate  # On Windows
-   uv pip install -r requirements.txt
+   uv pip install -r .\system\requirements\requirements_standalone.txt
    ```
 
 4. Start the AllTalk server:
