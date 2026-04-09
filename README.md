@@ -31,8 +31,51 @@ Custom ComfyUI nodes for AllTalk TTS integration.
 
 ## Prerequisites
 
-- An existing AllTalk TTS server installation running on your machine
-- The ALLTalk server should be accessible at the URL specified in the node (default: `http://localhost:7851`)
+**This node requires an AllTalk TTS server installation.** You must install and set up AllTalk before using these nodes.
+
+### Installing AllTalk
+
+AllTalk can be installed using two methods:
+
+#### Method 1: Using atsetup.bat (Recommended for Windows)
+
+1. Download AllTalk from the [official repository](https://github.com/erew123/alltalk_tts)
+2. Run `atsetup.bat` to set up the environment
+3. Follow the installation prompts
+4. Start the AllTalk server
+
+#### Method 2: Using uv (Alternative)
+
+If you prefer using [uv](https://github.com/astral-sh/uv) (a fast Python package installer):
+
+1. Install uv if you haven't already:
+   ```bash
+   pip install uv
+   ```
+
+2. Clone AllTalk:
+   ```bash
+   git clone https://github.com/erew123/alltalk_tts.git
+   cd alltalk_tts
+   ```
+
+3. Create a virtual environment and install dependencies:
+   ```bash
+   uv venv
+   .venv\Scripts\activate  # On Windows
+   uv pip install -r requirements.txt
+   ```
+
+4. Start the AllTalk server:
+   ```bash
+   python script.py
+   ```
+
+5. Verify the server is running by visiting `http://localhost:7851/api/ready` in your browser
+
+---
+
+Once AllTalk is running, these nodes will connect to it via the server URL (default: `http://localhost:7851`).
 
 ## Usage
 
