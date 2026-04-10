@@ -4,6 +4,7 @@ import torch
 import torchaudio
 import numpy as np
 import folder_paths
+import struct
 from pathlib import Path
 
 class AllTalkServerConfigV2:
@@ -64,6 +65,109 @@ class AllTalkTTSNodeV2:
     FUNCTION = "generate_tts"
     CATEGORY = "audio/tts/v2"
     OUTPUT_NODE = True
+
+    def _parse_wav(self, file_path):
+        """
+        Fallback WAV parser for environments where torchaudio/ffmpeg is broken.
+        Supports PCM (8, 16, 24, 32-bit) and IEEE 32-bit float audio.
+        """
+        try:
+            with open(file_path, "rb") as f:
+                # Read RIFF header
+                riff = f.read(4)
+                if riff != b'RIFF':
+                    raise Exception("Not a valid WAV file")
+
+                struct.unpack('<I', f.read(4))[0] # file_size
+                wave_header = f.read(4)
+                if wave_header != b'WAVE':
+                    raise Exception("Not a valid WAV file")
+
+                # Find fmt chunk
+                fmt_data = None
+                while True:
+                    chunk_id = f.read(4)
+                    if not chunk_id or len(chunk_id) < 4:
+                        raise Exception("fmt chunk not found")
+                    chunk_size = struct.unpack('<I', f.read(4))[0]
+                    
+                    if chunk_id == b'fmt ':
+                        fmt_data = f.read(chunk_size)
+                        break
+                    else:
+                        # Skip this chunk
+                        f.seek(chunk_size, 1)
+                    
+                    # Chunks are word-aligned
+                    if chunk_size % 2 == 1:
+                        f.seek(1, 1)
+
+                if not fmt_data:
+                    raise Exception("fmt chunk data is empty")
+
+                # Parse fmt chunk
+                audio_format = struct.unpack('<H', fmt_data[0:2])[0]
+                n_channels = struct.unpack('<H', fmt_data[2:4])[0]
+                sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
+                bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
+                block_align = struct.unpack('<H', fmt_data[12:14])[0]
+
+                # 1=PCM, 3=IEEE float
+                if audio_format not in [1, 3]:
+                    raise Exception(f"Unsupported audio format tag: {audio_format}")
+
+                # Read data chunk
+                frames = None
+                while True:
+                    chunk_id = f.read(4)
+                    if not chunk_id or len(chunk_id) < 4:
+                        raise Exception("data chunk not found")
+                    chunk_size = struct.unpack('<I', f.read(4))[0]
+                    
+                    if chunk_id == b'data':
+                        frames = f.read(chunk_size)
+                        break
+                    else:
+                        f.seek(chunk_size, 1)
+                    
+                    if chunk_size % 2 == 1:
+                        f.seek(1, 1)
+
+                if frames is None:
+                    raise Exception("data chunk is empty")
+
+            n_frames = len(frames) // block_align
+            sample_width = bits_per_sample // 8
+
+            if audio_format == 1:  # PCM
+                if sample_width == 1:
+                    audio_data = np.frombuffer(frames, dtype=np.uint8).astype(np.float32) / 128.0
+                elif sample_width == 2:
+                    audio_data = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+                elif sample_width == 3:
+                    # 24-bit
+                    audio_data = np.zeros((n_frames * n_channels,), dtype=np.float32)
+                    for i in range(n_frames * n_channels):
+                        offset = i * 3
+                        sample = int.from_bytes(frames[offset:offset+3], byteorder='little', signed=True)
+                        audio_data[i] = sample / 8388608.0
+                elif sample_width == 4:
+                    audio_data = np.frombuffer(frames, dtype=np.int32).astype(np.float32) / 2147483648.0
+                else:
+                    raise Exception(f"Unsupported sample width: {sample_width}")
+            elif audio_format == 3:  # IEEE float
+                audio_data = np.frombuffer(frames, dtype=np.float32).copy()
+            
+            # Reshape
+            if n_channels > 1:
+                audio_data = audio_data.reshape(-1, n_channels).T
+            else:
+                audio_data = audio_data.reshape(1, -1)
+
+            return audio_data, sample_rate
+
+        except Exception as e:
+            raise Exception(f"WAV parsing fallback failed: {str(e)}")
 
     def generate_tts(self, server_config, text, character_voice, language, speed, temperature, 
                      repetition_penalty, pitch, text_filtering, output_location,
@@ -132,11 +236,16 @@ class AllTalkTTSNodeV2:
             # ComfyUI expects (batch, channels, samples)
             if waveform.dim() == 2:
                 waveform = waveform.unsqueeze(0)
+        except Exception as e_torch:
+            # Fallback for broken torchaudio/ffmpeg environments
+            try:
+                audio_data, sample_rate = self._parse_wav(local_path)
+                waveform = torch.from_numpy(audio_data).unsqueeze(0)
+            except Exception as e_fallback:
+                raise Exception(f"Audio load failed. Torchaudio error: {str(e_torch)} | Fallback error: {str(e_fallback)}")
             
-            audio_dict = {"waveform": waveform, "sample_rate": sample_rate}
-            return (audio_dict, local_path)
-        except Exception as e:
-            raise Exception(f"Failed to load generated audio with torchaudio: {str(e)}")
+        audio_dict = {"waveform": waveform, "sample_rate": sample_rate}
+        return (audio_dict, local_path)
 
 
 class AllTalkVoiceLoaderV2:
