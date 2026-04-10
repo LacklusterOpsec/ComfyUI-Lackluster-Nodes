@@ -1,0 +1,105 @@
+{
+  "1": {
+    "inputs": {
+      "text": "Test",
+      "character_voice": "David_Attenborough CC3.wav",
+      "language": "auto",
+      "speed": 1,
+      "temperature": 0.75,
+      "repetition_penalty": 2.5,
+      "pitch": 0,
+      "alltalk_server_url": "http://localhost:7851",
+      "narrator_enabled": "false",
+      "narrator_voice": "male_1"
+    },
+    "class_type": "AllTalkTTS",
+    "_meta": {
+      "title": "AllTalkTTS"
+    }
+  },
+  "2": {
+    "inputs": {
+      "alltalk_server_url": "http://localhost:7851"
+    },
+    "class_type": "AllTalkVoiceLoader",
+    "_meta": {
+      "title": "AllTalkVoiceLoader"
+    }
+  },
+  "3": {
+    "inputs": {
+      "alltalk_server_url": "http://localhost:7851"
+    },
+    "class_type": "AllTalkSettingsLoader",
+    "_meta": {
+      "title": "AllTalkSettingsLoader"
+    }
+  },
+  "4": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_ycfev_00001_.flac&type=temp&subfolder=&rand=0.3961534557346087",
+      "audio": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text_0": "AllTalk Settings:\nEngine: xtts\nModel: xtts - xttsv2_2.0.3\nDeepSpeed: True\nLowVRAM: False\nStreaming: True\nMulti-voice: True",
+      "text": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text_0": "Available voices:\nArnold.wav\nClint_Eastwood CC3 (enhanced).wav\nClint_Eastwood CC3.wav\nDavid_Attenborough CC3.wav\nFemaleAmericanAccent_ClassyButSassy_Voice_1.wav\nFemaleAmericanAccent_ClassyButSassy_Voice_2.wav\nFemaleAmericanAccent_CluelessJenny_Voice_1.wav\nFemaleAmericanAccent_LauraWineAndChill_Voice_1.wav\nFemaleAmericanAccent_LittleMyriam_Voice_1.wav\nFemaleAmericanAccent_LittleMyriam_Voice_2.wav\nFemaleAmericanAccent_LittleMyriam_Voice_3.wav\nFemaleAmericanAccent_MatureMatilda_Voice_1.wav\nFemaleAmericanAccent_NonameOrphan_Voice_1.wav\nFemaleAmericanAccent_NonameOrphan_Voice_2.wav\nFemaleAmericanAccent_OhMyMaya_Voice_1.wav\nFemaleAmericanAccent_StoicSarah_Voice_1.wav\nFemaleAmericanAccent_TheYearsShowGrace_Voice_1.wav\nFemaleAmericanAccent_ValleyGirl_Voice_1.wav\nFemaleAmericanAccent_YoungPaola_Voice_1.wav\nFemaleAmericanAccent_YourCompanionJessica_Voice_1.wav\nFemaleBritishAccent_WhyLucyWhy_Voice_1.wav\nFemaleBritishAccent_WhyLucyWhy_Voice_2.wav\nFemaleSkandinavianAccent_BattleTilda_Voice_1.wav\nFemaleSkandinavianAccent_BattleTilda_Voice_2.wav\nFemaleSkandinavianAccent_BattleTilda_Voice_3.wav\nJames_Earl_Jones CC3.wav\nMaleAmericanAccent_CaptainJoshua_Voice_1.wav\nMaleAmericanAccent_ChillMarkus_Voice_1.wav\nMaleAmericanAccent_SteadfastNoah_Voice_1.wav\nMaleBritishAccent_NarratorKnightley_Voice_1.wav\nMorgan_Freeman CC3.wav\nSophie_Anderson CC3.wav\nfemale_01.wav\nfemale_02.wav\nfemale_03.wav\nfemale_04.wav\nfemale_05.wav\nfemale_06.wav\nfemale_07.wav\nmale_01.wav\nmale_02.wav\nmale_03.wav\nmale_04.wav\nmale_05.wav",
+      "text": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  },
+  "7": {
+    "inputs": {
+      "filename_prefix": "audio/ComfyUI",
+      "quality": "V0",
+      "audioUI": "",
+      "audio": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "SaveAudioMP3",
+    "_meta": {
+      "title": "Save Audio (MP3)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "text_0": "C:\\Tavern\\ComfyUI\\output\\comfyui_output_1775776612ee1c6.wav",
+      "text": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  }
+}
