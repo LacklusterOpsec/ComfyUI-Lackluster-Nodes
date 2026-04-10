@@ -1,5 +1,7 @@
 # ComfyUI-Lackluster-Nodes
 
+![Node Preview](node.png)
+
 Custom ComfyUI nodes for AllTalk TTS integration.
 
 ## Features
