@@ -74,7 +74,7 @@ class AllTalkTTSNode:
     RETURN_TYPES = ("AUDIO", "STRING")
     RETURN_NAMES = ("audio", "audio_path")
     FUNCTION = "generate_tts"
-    CATEGORY = "audio/tts"
+    CATEGORY = "Lackluster/Audio"
     OUTPUT_NODE = True
     
     def _detect_audio_format(self, file_path):
@@ -431,7 +431,7 @@ class AllTalkVoiceLoader:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("voices_info",)
     FUNCTION = "get_voices"
-    CATEGORY = "audio/tts"
+    CATEGORY = "Lackluster/Audio"
     
     def get_voices(self, alltalk_server_url):
         """Fetch available voices from AllTalk server"""
@@ -476,7 +476,7 @@ class AllTalkSettingsLoader:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("settings_info",)
     FUNCTION = "get_settings"
-    CATEGORY = "audio/tts"
+    CATEGORY = "Lackluster/Audio"
     
     def get_settings(self, alltalk_server_url):
         """Fetch current settings from AllTalk server"""
