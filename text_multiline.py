@@ -7,7 +7,6 @@ class Lackluster_Text_Multiline:
         return {
             "required": {
                 "text": ("STRING", {"default": "", "multiline": True, "dynamicPrompts": True}),
-                "strip_comments": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -15,17 +14,14 @@ class Lackluster_Text_Multiline:
     RETURN_NAMES = ("text",)
     FUNCTION = "process_text"
 
-    CATEGORY = "Lackluster Nodes/Text"
+    CATEGORY = "Lackluster/Text"
 
-    def process_text(self, text, strip_comments):
+    def process_text(self, text):
         # Split text into lines
         lines = text.splitlines()
         
         processed_lines = []
         for line in lines:
-            # Optionally skip lines that start with '#' after stripping whitespace
-            if strip_comments and line.strip().startswith('#'):
-                continue
             processed_lines.append(line)
         
         # Rejoin the lines
