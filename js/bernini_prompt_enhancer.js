@@ -648,7 +648,6 @@ class BerniniEnhancerEditor {
 
         this._updateTaskDisplay();
         this._fetchModels(true);
-        this._installVisibilityWatchdog();
 
         /* listen for server-side auto-enhance results */
         const nodeId = String(this.node.id);
@@ -914,44 +913,109 @@ class BerniniEnhancerEditor {
         });
     }
 
-    _installVisibilityWatchdog() {
-        const check = () => {
-            const el = this.root;
-            if (!el || !el.parentElement) return;
-            const rect = el.getBoundingClientRect();
-            const isHidden = (
-                rect.width === 0 && rect.height === 0 &&
-                el.style.display === "none"
-            );
-            if (isHidden) {
-                el.style.display = "";
-                el.style.flexDirection = "column";
-                this._applyLayout();
-                this._updateTaskDisplay();
-                requestAnimationFrame(() => {
-                    if (this.node.computeSize && this.node.size) this.node.size[1] = this.node.computeSize()[1];
-                    if (this.node.graph) this.node.graph.setDirtyCanvas(true, true);
-                });
-            }
-        };
-        setInterval(check, 1000);
+    _syncFromWidgets() {
+        if (this.taskWidget && this.taskSelect) {
+            const v = this.taskWidget.value;
+            if (v && this.taskSelect.value !== v) this.taskSelect.value = v;
+        }
+        if (this.promptWidget && this.promptArea) {
+            const v = this.promptWidget.value || "";
+            if (this.promptArea.value !== v) this.promptArea.value = v;
+        }
+        if (this.negWidget && this.negArea) {
+            const v = this.negWidget.value || "";
+            if (this.negArea.value !== v) this.negArea.value = v;
+            this.defNegCheck.checked = !v.trim();
+        }
+        if (this.urlWidget && this.urlInput) {
+            const v = this.urlWidget.value || "";
+            if (this.urlInput.value !== v) this.urlInput.value = v;
+        }
+        if (this.modelWidget && this.modelSelect) {
+            const v = this.modelWidget.value || "";
+            if (v && this.modelSelect.value !== v) this.modelSelect.value = v;
+        }
+        if (this.apiFormatWidget && this.apiFormatSelect) {
+            const v = this.apiFormatWidget.value;
+            if (v && this.apiFormatSelect.value !== v) this.apiFormatSelect.value = v;
+        }
+        if (this.autoEnhanceWidget && this.autoEnhanceCheck) {
+            this.autoEnhanceCheck.checked = !!this.autoEnhanceWidget.value;
+        }
+        if (this.unloadOllamaWidget && this.unloadCheck) {
+            this.unloadCheck.checked = !!this.unloadOllamaWidget.value;
+        }
+        if (this.tempWidget && this.tempInput) {
+            const v = parseFloat(this.tempWidget.value);
+            if (!isNaN(v)) this.tempInput.value = v;
+        }
+        if (this.maxTokensWidget && this.maxTokensInput) {
+            const v = parseInt(this.maxTokensWidget.value, 10);
+            if (!isNaN(v)) this.maxTokensInput.value = v;
+        }
+        if (this.seedWidget && this.seedInput) {
+            const v = parseInt(this.seedWidget.value, 10);
+            if (!isNaN(v)) this.seedInput.value = v;
+        }
+        if (this.prependSysWidget && this.prependCheck) {
+            this.prependCheck.checked = this.prependSysWidget.value !== false;
+        }
+        this._updateTaskDisplay();
     }
 }
 
 /* register the custom node type */
 app.registerExtension({
-    name: "BerniniPromptEnhancer.editor",
-    async beforeRegisterNodeDef(nodeType, nodeData, _app) {
+    name: "BerniniPromptEnhancer.Editor",
+    async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== "BerniniPromptEnhancer") return;
+
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
-            // wrap in requestAnimationFrame to let ComfyUI finish building widgets
-            requestAnimationFrame(() => {
-                if (this.widgets) {
-                    new BerniniEnhancerEditor(this, this.outputsElement || document.createElement("div"));
+
+            try {
+                for (const name of HIDDEN_WIDGETS) hideWidget(findWidget(this, name));
+
+                const mount = document.createElement("div");
+                mount.style.cssText = "width:100%;box-sizing:border-box;";
+                const getEditorHeight = () => {
+                    const ed = mount.firstElementChild;
+                    return ed ? ed.scrollHeight : 400;
+                };
+
+                const editorWidget = this.addDOMWidget("bernini_enhancer_editor", "div", mount, {
+                    serialize: false, hideOnZoom: false, getHeight: getEditorHeight,
+                });
+                if (editorWidget) {
+                    editorWidget.computeSize = function (width) {
+                        return [width, getEditorHeight()];
+                    };
                 }
-            });
+
+                new BerniniEnhancerEditor(this, mount);
+
+                requestAnimationFrame(() => {
+                    if (this.computeSize && this.size) this.size[1] = this.computeSize()[1];
+                    if (this.graph) this.graph.setDirtyCanvas(true, true);
+                });
+            } catch (err) {
+                console.error("[BerniniPromptEnhancer] Editor setup error:", err);
+            }
+
+            return r;
+        };
+
+        const onConfigure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function (data) {
+            const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+            if (this._berniniEnhancerEditor) {
+                requestAnimationFrame(() => {
+                    this._berniniEnhancerEditor._syncFromWidgets();
+                    if (this.computeSize && this.size) this.size[1] = this.computeSize()[1];
+                    if (this.graph) this.graph.setDirtyCanvas(true, true);
+                });
+            }
             return r;
         };
     },
