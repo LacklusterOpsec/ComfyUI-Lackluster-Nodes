@@ -1,7 +1,7 @@
 /**
- * BerniniPromptEnhancer - Editor JS v1.0
+ * LacklusterPromptEnhancer - Editor JS v1.0
  *
- * Frontend for the BerniniPromptEnhancer ComfyUI node.
+ * Frontend for the LacklusterPromptEnhancer ComfyUI node.
  * Task-aware editor with guidance display, system prompt preview,
  * and LLM prompt enhancement.
  */
@@ -181,7 +181,7 @@ class BerniniEnhancerEditor {
         });
         header.appendChild(el("div", {
             fontWeight: "700", fontSize: "14px", color: C.accent, letterSpacing: "0.5px",
-        }, "Bernini Prompt Enhancer"));
+        }, "Lackluster Prompt Enhancer"));
         const badges = el("div", { display: "flex", gap: "4px", alignItems: "center" });
         this.guidanceBadge = el("span", {
             fontSize: "9px", color: C.cyan, background: "rgba(34,211,238,0.1)",
@@ -756,7 +756,7 @@ class BerniniEnhancerEditor {
                 this.templateArea.value = data.template;
             }
         } catch (e) {
-            console.warn("[BerniniEnhancer] Failed to fetch template:", e);
+            console.warn("[LacklusterEnhancer] Failed to fetch template:", e);
         }
     }
 
@@ -855,7 +855,7 @@ class BerniniEnhancerEditor {
                     imageBase64 = canvas.toDataURL("image/png").split(",")[1];
                 }
             } catch (e) {
-                console.warn("[BerniniEnhancer] Failed to capture canvas image:", e);
+                console.warn("[LacklusterEnhancer] Failed to capture canvas image:", e);
             }
         }
 
@@ -1084,9 +1084,9 @@ class BerniniEnhancerEditor {
 
 /* register the custom node type */
 app.registerExtension({
-    name: "BerniniPromptEnhancer.Editor",
+    name: "LacklusterPromptEnhancer.Editor",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== "BerniniPromptEnhancer") return;
+        if (nodeData.name !== "LacklusterPromptEnhancer") return;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -1130,7 +1130,7 @@ app.registerExtension({
                     if (this.graph) this.graph.setDirtyCanvas(true, true);
                 });
             } catch (err) {
-                console.error("[BerniniPromptEnhancer] Editor setup error:", err);
+                console.error("[LacklusterPromptEnhancer] Editor setup error:", err);
             }
 
             return r;

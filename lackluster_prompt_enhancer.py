@@ -1,5 +1,5 @@
 """
-BerniniPromptEnhancer v1.0
+LacklusterPromptEnhancer v1.0
 
 Lightweight ComfyUI node: prompt enhancement via LLM with task mode selection.
 Uses Bernini's official per-task prompt templates to rewrite short instructions
@@ -18,7 +18,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image as PILImage
 
-log = logging.getLogger("BerniniPromptEnhancer")
+log = logging.getLogger("LacklusterPromptEnhancer")
 
 TASK_TYPES = [
     "v2v", "rv2v", "r2v", "t2v", "t2i", "r2i", "i2i",
@@ -282,7 +282,7 @@ def _apply_openai_generation_options(payload, model, max_tokens=2048, temperatur
         payload["temperature"] = temperature
 
 
-class BerniniPromptEnhancer:
+class LacklusterPromptEnhancer:
     """Prompt-only Bernini enhancement node.
 
     Takes a raw prompt + task mode, optionally enhances it through an LLM,
@@ -392,7 +392,7 @@ class BerniniPromptEnhancer:
         neg_prompt = negative_prompt.strip() if negative_prompt.strip() else DEFAULT_NEG_PROMPT
 
         if auto_enhance and ollama_model and working_prompt:
-            log.info("[BerniniPromptEnhancer] Auto-enhance triggered (model=%s, task=%s)",
+            log.info("[LacklusterPromptEnhancer] Auto-enhance triggered (model=%s, task=%s)",
                      ollama_model, task_type)
             enhanced = _server_enhance(
                 working_prompt, task_type, ollama_url, ollama_model,
@@ -403,7 +403,7 @@ class BerniniPromptEnhancer:
                 if prepend_system_prompt:
                     sys_prompt = _get_system_prompt(task_type)
                     enhanced = sys_prompt + " " + enhanced
-                log.info("[BerniniPromptEnhancer] Enhanced prompt (%d chars)", len(enhanced))
+                log.info("[LacklusterPromptEnhancer] Enhanced prompt (%d chars)", len(enhanced))
                 try:
                     from server import PromptServer
                     PromptServer.instance.send_sync("bernini_enhanced", {
@@ -412,7 +412,7 @@ class BerniniPromptEnhancer:
                 except Exception:
                     pass
                 return (enhanced, neg_prompt)
-            log.warning("[BerniniPromptEnhancer] Enhancement returned nothing; using original")
+            log.warning("[LacklusterPromptEnhancer] Enhancement returned nothing; using original")
 
         if prepend_system_prompt and working_prompt:
             working_prompt = _get_system_prompt(task_type) + " " + working_prompt
@@ -508,12 +508,12 @@ def _server_enhance(user_prompt, task_type, url, model, api_format,
 
         return text if text else None
     except Exception as e:
-        log.warning("[BerniniPromptEnhancer] Enhance failed: %s: %s", type(e).__name__, e)
+        log.warning("[LacklusterPromptEnhancer] Enhance failed: %s: %s", type(e).__name__, e)
         return None
 
 
-NODE_CLASS_MAPPINGS = {"BerniniPromptEnhancer": BerniniPromptEnhancer}
-NODE_DISPLAY_NAME_MAPPINGS = {"BerniniPromptEnhancer": "Bernini Prompt Enhancer"}
+NODE_CLASS_MAPPINGS = {"LacklusterPromptEnhancer": LacklusterPromptEnhancer}
+NODE_DISPLAY_NAME_MAPPINGS = {"LacklusterPromptEnhancer": "Lackluster Prompt Enhancer"}
 
 
 try:
@@ -703,7 +703,7 @@ try:
                             status=502,
                         )
                     await r.read()
-            log.info("[BerniniEnhancer] Unloaded model '%s' from Ollama VRAM", model)
+            log.info("[LacklusterEnhancer] Unloaded model '%s' from Ollama VRAM", model)
             return web.json_response({"status": "unloaded", "model": model})
         except Exception as e:
             return web.json_response(
@@ -723,4 +723,4 @@ try:
         })
 
 except ImportError:
-    log.warning("[BerniniEnhancer] PromptServer not available; server routes not registered.")
+    log.warning("[LacklusterEnhancer] PromptServer not available; server routes not registered.")
