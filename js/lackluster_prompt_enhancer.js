@@ -143,6 +143,11 @@ class BerniniEnhancerEditor {
         this.seedWidget = findWidget(node, "seed");
         this.prependSysWidget = findWidget(node, "prepend_system_prompt");
         this.ollamaOpen = false;
+        this.history = [];
+        this.historyMax = 20;
+        this._compareMode = false;
+        this._compareA = null;
+        this._compareB = null;
         this._build();
     }
 
@@ -406,6 +411,59 @@ class BerniniEnhancerEditor {
         promptBox.appendChild(this.negArea);
         this.root.appendChild(promptBox);
 
+        /* prompt history collapsible */
+        this._historyBox = el("div", {
+            background: C.deep, border: "1px solid " + C.borderIn,
+            borderRadius: "4px",
+        });
+        const histHeader = el("div", {
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "6px 8px", cursor: "pointer", userSelect: "none",
+        });
+        this._histLabel = el("span", {
+            fontWeight: "600", fontSize: "10px", color: C.dim,
+            textTransform: "uppercase", letterSpacing: "0.5px",
+        }, "History (0)");
+        this._histArrow = el("span", { fontSize: "10px", color: C.dim, transition: "transform 0.2s", marginRight: "4px" }, "\u25B6");
+        const histLeft = el("div", { display: "flex", alignItems: "center", gap: "4px" });
+        histLeft.appendChild(this._histArrow);
+        histLeft.appendChild(this._histLabel);
+        histHeader.appendChild(histLeft);
+        const histActions = el("div", { display: "flex", gap: "4px" });
+        this._histClearBtn = el("button", {
+            background: "transparent", color: C.dim, border: "1px solid " + C.borderIn,
+            borderRadius: "3px", padding: "1px 6px", fontSize: "9px", cursor: "pointer",
+            display: "none",
+        }, "Clear");
+        this._histClearBtn.onclick = (e) => { e.stopPropagation(); this._clearHistory(); };
+        histActions.appendChild(this._histClearBtn);
+        this._histCompareBtn = el("button", {
+            background: "transparent", color: C.dim, border: "1px solid " + C.borderIn,
+            borderRadius: "3px", padding: "1px 6px", fontSize: "9px", cursor: "pointer",
+            display: "none",
+        }, "A/B");
+        this._histCompareBtn.onclick = (e) => { e.stopPropagation(); this._toggleCompareMode(); };
+        histActions.appendChild(this._histCompareBtn);
+        histHeader.appendChild(histActions);
+        this._historyBox.appendChild(histHeader);
+
+        this._histBody = el("div", {
+            display: "none", flexDirection: "column",
+            borderTop: "1px solid " + C.borderIn,
+            maxHeight: "200px", overflowY: "auto",
+        });
+        this._historyBox.appendChild(this._histBody);
+
+        this._histOpen = false;
+        histHeader.onclick = () => {
+            this._histOpen = !this._histOpen;
+            this._histBody.style.display = this._histOpen ? "flex" : "none";
+            this._histArrow.style.transform = this._histOpen ? "rotate(90deg)" : "rotate(0deg)";
+            if (this._histOpen) this._renderHistory();
+        };
+
+        this.root.appendChild(this._historyBox);
+
         /* LLM Prompt Enhancer (collapsible) */
         const ollamaHeader = el("div", {
             display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -662,7 +720,7 @@ class BerniniEnhancerEditor {
         /* layout sections */
         this._layoutSections = {
             header: header,
-            left: [taskBox, sysBox, promptBox],
+            left: [taskBox, sysBox, promptBox, this._historyBox],
             right: [ollamaHeader, this.ollamaBody],
         };
         this._layoutMode = "stacked";
@@ -685,6 +743,7 @@ class BerniniEnhancerEditor {
         api.addEventListener("bernini_enhanced", (event) => {
             const d = event.detail;
             if (d && String(d.node) === nodeId && d.text) {
+                this._pushHistory("auto");
                 this.promptArea.value = d.text;
                 if (this.promptWidget) this.promptWidget.value = d.text;
                 this.statusEl.textContent = "Auto-enhanced on queue (" + d.text.length + " chars)";
@@ -794,6 +853,231 @@ class BerniniEnhancerEditor {
         this.ollamaArrow.style.transform = this.ollamaOpen ? "rotate(90deg)" : "rotate(0deg)";
     }
 
+    _pushHistory(label) {
+        const text = this.promptArea.value.trim();
+        if (!text) return;
+        if (this.history.length && this.history[0].text === text) return;
+        this.history.unshift({ text, label: label || "", ts: new Date() });
+        if (this.history.length > this.historyMax) this.history.length = this.historyMax;
+        this._updateHistoryUI();
+    }
+
+    _clearHistory() {
+        this.history = [];
+        this._compareMode = false;
+        this._compareA = null;
+        this._compareB = null;
+        this._updateHistoryUI();
+        if (this._histOpen) this._renderHistory();
+    }
+
+    _toggleCompareMode() {
+        this._compareMode = !this._compareMode;
+        this._compareA = null;
+        this._compareB = null;
+        if (this._histOpen) this._renderHistory();
+    }
+
+    _updateHistoryUI() {
+        const count = this.history.length;
+        this._histLabel.textContent = "History (" + count + ")";
+        this._histClearBtn.style.display = count ? "inline" : "none";
+        this._histCompareBtn.style.display = count > 1 ? "inline" : "none";
+    }
+
+    _renderHistory() {
+        this._histBody.innerHTML = "";
+        if (!this.history.length) {
+            const empty = el("div", {
+                fontSize: "10px", color: C.dim, padding: "12px 8px", textAlign: "center",
+                fontStyle: "italic",
+            }, "No history yet. Enhance a prompt to see past versions.");
+            this._histBody.appendChild(empty);
+            return;
+        }
+
+        if (this._compareMode) {
+            /* A/B picker mode */
+            const pickerNote = el("div", {
+                fontSize: "9px", color: C.amber, padding: "6px 8px",
+                borderBottom: "1px solid " + C.borderIn,
+                background: "rgba(251,191,36,0.06)",
+            }, "Click two entries to compare (A then B)");
+            this._histBody.appendChild(pickerNote);
+        }
+
+        for (let i = 0; i < this.history.length; i++) {
+            const entry = this.history[i];
+            const row = el("div", {
+                display: "flex", flexDirection: "column", gap: "2px",
+                padding: "6px 8px", cursor: "pointer", fontSize: "10px",
+                borderBottom: "1px solid " + C.borderIn,
+                transition: "background 0.15s",
+            });
+            row.onmouseover = () => { row.style.background = C.panel; };
+            row.onmouseout = () => { row.style.background = "transparent"; };
+
+            if (this._compareMode) {
+                const isA = this._compareA === i;
+                const isB = this._compareB === i;
+                if (isA || isB) {
+                    const tag = el("span", {
+                        fontSize: "8px", fontWeight: "700", padding: "1px 5px",
+                        borderRadius: "3px", marginBottom: "2px", alignSelf: "flex-start",
+                        color: "white", background: isA ? C.accent : C.cyan,
+                    }, isA ? "A" : "B");
+                    row.appendChild(tag);
+                }
+                row.onclick = () => {
+                    if (this._compareA === null) {
+                        this._compareA = i;
+                    } else if (this._compareB === null && i !== this._compareA) {
+                        this._compareB = i;
+                        this._showDiff();
+                        return;
+                    } else {
+                        this._compareA = i;
+                        this._compareB = null;
+                    }
+                    this._renderHistory();
+                };
+            } else {
+                row.onclick = () => this._restoreHistory(i);
+            }
+
+            const metaRow = el("div", {
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                color: C.dim, fontSize: "9px",
+            });
+            const ago = this._timeAgo(entry.ts);
+            metaRow.appendChild(el("span", {}, ago));
+            if (entry.label) {
+                metaRow.appendChild(el("span", { color: C.muted }, entry.label));
+            }
+            row.appendChild(metaRow);
+
+            const preview = entry.text.length > 120
+                ? entry.text.slice(0, 120) + "..." : entry.text;
+            row.appendChild(el("div", {
+                color: C.text, lineHeight: "1.4", fontSize: "10px",
+                wordBreak: "break-word", overflow: "hidden",
+            }, preview));
+
+            this._histBody.appendChild(row);
+        }
+    }
+
+    _timeAgo(date) {
+        const sec = Math.floor((Date.now() - date.getTime()) / 1000);
+        if (sec < 10) return "just now";
+        if (sec < 60) return sec + "s ago";
+        const min = Math.floor(sec / 60);
+        if (min < 60) return min + "m ago";
+        const hrs = Math.floor(min / 60);
+        if (hrs < 24) return hrs + "h ago";
+        return Math.floor(hrs / 24) + "d ago";
+    }
+
+    _restoreHistory(index) {
+        const entry = this.history[index];
+        if (!entry) return;
+        this.promptArea.value = entry.text;
+        if (this.promptWidget) this.promptWidget.value = entry.text;
+        this.statusEl.textContent = "Restored from history (" + this._timeAgo(entry.ts) + ")";
+    }
+
+    _showDiff() {
+        if (this._compareA === null || this._compareB === null) return;
+        const a = this.history[this._compareA];
+        const b = this.history[this._compareB];
+        if (!a || !b) return;
+
+        this._histBody.innerHTML = "";
+
+        const header = el("div", {
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "6px 8px", borderBottom: "1px solid " + C.borderIn,
+        });
+        const backBtn = el("button", {
+            background: "transparent", color: C.text, border: "1px solid " + C.borderIn,
+            borderRadius: "3px", padding: "1px 8px", fontSize: "9px", cursor: "pointer",
+        }, "\u2190 Back");
+        backBtn.onclick = () => { this._compareA = null; this._compareB = null; this._renderHistory(); };
+        header.appendChild(backBtn);
+        const title = el("span", { fontSize: "10px", fontWeight: "600", color: C.muted }, "A / B Diff");
+        header.appendChild(title);
+        const swapBtn = el("button", {
+            background: "transparent", color: C.text, border: "1px solid " + C.borderIn,
+            borderRadius: "3px", padding: "1px 8px", fontSize: "9px", cursor: "pointer",
+        }, "Swap");
+        swapBtn.onclick = () => { const tmp = this._compareA; this._compareA = this._compareB; this._compareB = tmp; this._showDiff(); };
+        header.appendChild(swapBtn);
+        this._histBody.appendChild(header);
+
+        /* use the selected order */
+        const leftIdx = this._compareA;
+        const rightIdx = this._compareB;
+        const left = this.history[leftIdx];
+        const right = this.history[rightIdx];
+        const leftLabel = "#" + (leftIdx + 1) + " (" + this._timeAgo(left.ts) + ")";
+        const rightLabel = "#" + (rightIdx + 1) + " (" + this._timeAgo(right.ts) + ")";
+
+        /* side-by-side view */
+        const diffRow = el("div", { display: "flex", gap: "4px", padding: "6px 8px", flex: "1" });
+
+        const leftCol = el("div", { display: "flex", flexDirection: "column", gap: "4px", flex: "1", minWidth: "0" });
+        leftCol.appendChild(el("div", {
+            fontSize: "9px", fontWeight: "600", color: C.accent,
+            padding: "2px 0", borderBottom: "1px solid rgba(244,63,94,0.2)",
+        }, leftLabel));
+        const leftText = el("div", {
+            fontSize: "10px", color: C.text, lineHeight: "1.5",
+            wordBreak: "break-word", whiteSpace: "pre-wrap",
+            maxHeight: "300px", overflowY: "auto",
+        }, left.text);
+        leftCol.appendChild(leftText);
+        diffRow.appendChild(leftCol);
+
+        const divider = el("div", {
+            width: "1px", background: C.borderIn, alignSelf: "stretch",
+        });
+        diffRow.appendChild(divider);
+
+        const rightCol = el("div", { display: "flex", flexDirection: "column", gap: "4px", flex: "1", minWidth: "0" });
+        rightCol.appendChild(el("div", {
+            fontSize: "9px", fontWeight: "600", color: C.cyan,
+            padding: "2px 0", borderBottom: "1px solid rgba(34,211,238,0.2)",
+        }, rightLabel));
+        const rightText = el("div", {
+            fontSize: "10px", color: C.text, lineHeight: "1.5",
+            wordBreak: "break-word", whiteSpace: "pre-wrap",
+            maxHeight: "300px", overflowY: "auto",
+        }, right.text);
+        rightCol.appendChild(rightText);
+        diffRow.appendChild(rightCol);
+
+        this._histBody.appendChild(diffRow);
+
+        /* restore buttons */
+        const btnRow = el("div", {
+            display: "flex", gap: "4px", justifyContent: "center",
+            padding: "6px 8px", borderTop: "1px solid " + C.borderIn,
+        });
+        const restoreABtn = el("button", {
+            background: C.accent, color: "white", border: "none",
+            borderRadius: "3px", padding: "3px 12px", fontSize: "9px", cursor: "pointer",
+        }, "Restore A");
+        restoreABtn.onclick = () => this._restoreHistory(leftIdx);
+        btnRow.appendChild(restoreABtn);
+        const restoreBBtn = el("button", {
+            background: C.cyan, color: "white", border: "none",
+            borderRadius: "3px", padding: "3px 12px", fontSize: "9px", cursor: "pointer",
+        }, "Restore B");
+        restoreBBtn.onclick = () => this._restoreHistory(rightIdx);
+        btnRow.appendChild(restoreBBtn);
+        this._histBody.appendChild(btnRow);
+    }
+
     async _fetchModels(silent) {
         if (!silent) this.statusEl.textContent = "Fetching models...";
         const fmt = this.apiFormatSelect ? this.apiFormatSelect.value : "Ollama";
@@ -877,6 +1161,7 @@ class BerniniEnhancerEditor {
             });
             const data = await resp.json();
             if (data.response) {
+                this._pushHistory("enhanced");
                 this.promptArea.value = data.response;
                 if (this.promptWidget) this.promptWidget.value = data.response;
                 this.statusEl.textContent = "Enhanced with " + this.taskSelect.value + " template" + (imageBase64 ? " (with image)" : "");
