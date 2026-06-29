@@ -189,6 +189,12 @@ class BerniniEnhancerEditor {
             fontFamily: "monospace",
         }, "");
         badges.appendChild(this.guidanceBadge);
+        this.textInputIndicator = el("span", {
+            fontSize: "9px", color: C.dim, background: C.deep,
+            padding: "2px 6px", borderRadius: "3px", border: "1px solid " + C.borderIn,
+            display: "none",
+        }, "");
+        badges.appendChild(this.textInputIndicator);
         this.imageIndicator = el("span", {
             fontSize: "9px", color: C.dim, background: C.deep,
             padding: "2px 6px", borderRadius: "3px", border: "1px solid " + C.borderIn,
@@ -443,8 +449,17 @@ class BerniniEnhancerEditor {
         }
         this.apiFormatSelect.onchange = () => {
             if (this.apiFormatWidget) this.apiFormatWidget.value = this.apiFormatSelect.value;
+            try { localStorage.setItem("berniniEnhancerApiFormat", this.apiFormatSelect.value); } catch (e) {}
             this._fetchModels();
         };
+        /* restore saved API format */
+        try {
+            const saved = localStorage.getItem("berniniEnhancerApiFormat");
+            if (saved && ["Ollama", "OpenAI / vLLM"].includes(saved)) {
+                this.apiFormatSelect.value = saved;
+                if (this.apiFormatWidget) this.apiFormatWidget.value = saved;
+            }
+        } catch (e) {}
         formatRow.appendChild(this.apiFormatSelect);
         this.ollamaBody.appendChild(formatRow);
 
@@ -662,7 +677,7 @@ class BerniniEnhancerEditor {
 
         /* poll for image connection changes */
         this._imagePollInterval = setInterval(() => {
-            this._updateImageIndicator();
+            this._updateConnectionIndicators();
         }, 1000);
 
         /* listen for server-side auto-enhance results */
@@ -684,7 +699,7 @@ class BerniniEnhancerEditor {
 
         this.guidanceBadge.textContent = meta.guidance || "?";
 
-        this._updateImageIndicator();
+        this._updateConnectionIndicators();
 
         this.hintBox.innerHTML = "";
         if (meta.desc) {
@@ -745,7 +760,7 @@ class BerniniEnhancerEditor {
         }
     }
 
-    _updateImageIndicator() {
+    _updateConnectionIndicators() {
         const hasImage = this.node.inputs && this.node.inputs.some(
             inp => inp.name === "image" && inp.link != null
         );
@@ -757,6 +772,19 @@ class BerniniEnhancerEditor {
             this.imageIndicator.style.background = "rgba(74,222,128,0.08)";
         } else {
             this.imageIndicator.style.display = "none";
+        }
+
+        const hasTextInput = this.node.inputs && this.node.inputs.some(
+            inp => inp.name === "text_input" && inp.link != null
+        );
+        if (hasTextInput) {
+            this.textInputIndicator.style.display = "inline";
+            this.textInputIndicator.textContent = "Text";
+            this.textInputIndicator.style.color = C.amber;
+            this.textInputIndicator.style.borderColor = "rgba(251,191,36,0.3)";
+            this.textInputIndicator.style.background = "rgba(251,191,36,0.08)";
+        } else {
+            this.textInputIndicator.style.display = "none";
         }
     }
 
@@ -1024,7 +1052,7 @@ class BerniniEnhancerEditor {
             this.prependCheck.checked = this.prependSysWidget.value !== false;
         }
         this._updateTaskDisplay();
-        this._updateImageIndicator();
+        this._updateConnectionIndicators();
     }
 
     _getMinHeight() {

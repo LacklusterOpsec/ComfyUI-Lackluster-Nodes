@@ -326,6 +326,11 @@ class BerniniPromptEnhancer:
                     "tooltip": "Input image for vision-enabled LLM enhancement (i2i, i2v, etc.). "
                                "Converted to base64 and sent to multimodal models.",
                 }),
+                "text_input": ("STRING", {
+                    "forceInput": True,
+                    "multiline": True,
+                    "tooltip": "Text node connection input. If connected, replaces the prompt field.",
+                }),
                 "negative_prompt": ("STRING", {
                     "default": "",
                     "multiline": True,
@@ -374,6 +379,7 @@ class BerniniPromptEnhancer:
         api_format="Ollama",
         auto_enhance=False,
         image=None,
+        text_input="",
         negative_prompt="",
         temperature=0.7,
         max_tokens=2048,
@@ -382,7 +388,7 @@ class BerniniPromptEnhancer:
         unload_ollama=False,
         unique_id=None,
     ):
-        working_prompt = prompt.strip()
+        working_prompt = (text_input if text_input.strip() else prompt).strip()
         neg_prompt = negative_prompt.strip() if negative_prompt.strip() else DEFAULT_NEG_PROMPT
 
         if auto_enhance and ollama_model and working_prompt:
