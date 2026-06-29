@@ -159,7 +159,7 @@ class BerniniEnhancerEditor {
 
     _sta(el) {
         this._si(el);
-        el.style.resize = "vertical";
+        el.style.resize = "none";
     }
 
     _build() {
@@ -169,7 +169,7 @@ class BerniniEnhancerEditor {
             display: "flex", flexDirection: "column", gap: "8px",
             background: C.bg, color: C.text, padding: "10px",
             borderRadius: "6px", fontFamily: "ui-sans-serif, system-ui, sans-serif",
-            fontSize: "12px", width: "100%", boxSizing: "border-box",
+            fontSize: "12px", width: "100%", height: "100%", boxSizing: "border-box",
             boxShadow: "inset 0 2px 5px rgba(0,0,0,0.5)",
         });
         this.mount.appendChild(this.root);
@@ -189,6 +189,12 @@ class BerniniEnhancerEditor {
             fontFamily: "monospace",
         }, "");
         badges.appendChild(this.guidanceBadge);
+        this.imageIndicator = el("span", {
+            fontSize: "9px", color: C.dim, background: C.deep,
+            padding: "2px 6px", borderRadius: "3px", border: "1px solid " + C.borderIn,
+            display: "none",
+        }, "");
+        badges.appendChild(this.imageIndicator);
         this.layoutBtn = el("button", {
             background: "transparent", color: C.dim, border: "1px solid " + C.borderIn,
             borderRadius: "3px", padding: "1px 7px", fontSize: "9px", cursor: "pointer",
@@ -332,6 +338,7 @@ class BerniniEnhancerEditor {
             background: C.panel, border: "1px solid " + C.borderIn,
             borderRadius: "4px", padding: "8px",
             display: "flex", flexDirection: "column", gap: "5px",
+            flex: "1 1 auto", minHeight: "120px",
         });
         promptBox.appendChild(el("div", {
             fontWeight: "600", fontSize: "10px", color: C.muted,
@@ -341,6 +348,8 @@ class BerniniEnhancerEditor {
         this.promptArea = document.createElement("textarea");
         this.promptArea.rows = 4;
         this._sta(this.promptArea);
+        this.promptArea.style.flex = "1 1 60px";
+        this.promptArea.style.minHeight = "60px";
         swallowKeys(this.promptArea);
         this.promptArea.value = this.promptWidget ? this.promptWidget.value : "";
         this.promptArea.placeholder = "Describe your edit or generation...";
@@ -380,6 +389,8 @@ class BerniniEnhancerEditor {
         this.negArea = document.createElement("textarea");
         this.negArea.rows = 2;
         this._sta(this.negArea);
+        this.negArea.style.flex = "0 1 35px";
+        this.negArea.style.minHeight = "35px";
         swallowKeys(this.negArea);
         this.negArea.value = this.negWidget ? this.negWidget.value : "";
         this.negArea.placeholder = this.defNegCheck.checked ? "(Bernini default Chinese neg will be used)" : "Enter custom negative prompt...";
@@ -649,6 +660,11 @@ class BerniniEnhancerEditor {
         this._updateTaskDisplay();
         this._fetchModels(true);
 
+        /* poll for image connection changes */
+        this._imagePollInterval = setInterval(() => {
+            this._updateImageIndicator();
+        }, 1000);
+
         /* listen for server-side auto-enhance results */
         const nodeId = String(this.node.id);
         api.addEventListener("bernini_enhanced", (event) => {
@@ -667,6 +683,8 @@ class BerniniEnhancerEditor {
         const sysp = SYSTEM_PROMPTS[task] || SYSTEM_PROMPTS["default"];
 
         this.guidanceBadge.textContent = meta.guidance || "?";
+
+        this._updateImageIndicator();
 
         this.hintBox.innerHTML = "";
         if (meta.desc) {
@@ -727,6 +745,21 @@ class BerniniEnhancerEditor {
         }
     }
 
+    _updateImageIndicator() {
+        const hasImage = this.node.inputs && this.node.inputs.some(
+            inp => inp.name === "image" && inp.link != null
+        );
+        if (hasImage) {
+            this.imageIndicator.style.display = "inline";
+            this.imageIndicator.textContent = "Img";
+            this.imageIndicator.style.color = C.green;
+            this.imageIndicator.style.borderColor = "rgba(74,222,128,0.3)";
+            this.imageIndicator.style.background = "rgba(74,222,128,0.08)";
+        } else {
+            this.imageIndicator.style.display = "none";
+        }
+    }
+
     _toggleOllama() {
         this.ollamaOpen = !this.ollamaOpen;
         this.ollamaBody.style.display = this.ollamaOpen ? "flex" : "none";
@@ -775,11 +808,28 @@ class BerniniEnhancerEditor {
         if (!model) { this.statusEl.textContent = "Select a model first."; return; }
         if (!this.promptArea.value.trim()) { this.statusEl.textContent = "Enter an instruction to enhance."; return; }
 
-        this._setEnhanceBusy(true, "Asking " + model + " (text-only)...");
+        const hasImage = this.node.inputs && this.node.inputs.some(
+            inp => inp.name === "image" && inp.link != null
+        );
+
+        this._setEnhanceBusy(true, "Asking " + model + (hasImage ? " (with image)..." : " (text-only)..."));
         const fmt = this.apiFormatSelect ? this.apiFormatSelect.value : "Ollama";
 
         const customTemplate = (this.templateArea && this.templateArea.value.trim() !== this._currentDefaultTemplate)
             ? this.templateArea.value.trim() : "";
+
+        // Try to capture image from connected node's output via canvas
+        let imageBase64 = null;
+        if (hasImage) {
+            try {
+                const canvas = document.querySelector("canvas");
+                if (canvas) {
+                    imageBase64 = canvas.toDataURL("image/png").split(",")[1];
+                }
+            } catch (e) {
+                console.warn("[BerniniEnhancer] Failed to capture canvas image:", e);
+            }
+        }
 
         try {
             const resp = await api.fetchApi("/bernini_enhancer/generate", {
@@ -791,7 +841,7 @@ class BerniniEnhancerEditor {
                     prompt: this.promptArea.value,
                     task_type: this.taskSelect.value,
                     image_num: 1,
-                    images: [],
+                    image: imageBase64,
                     api_format: fmt,
                     unload_ollama: this.unloadCheck ? this.unloadCheck.checked : false,
                     custom_template: customTemplate,
@@ -801,7 +851,7 @@ class BerniniEnhancerEditor {
             if (data.response) {
                 this.promptArea.value = data.response;
                 if (this.promptWidget) this.promptWidget.value = data.response;
-                this.statusEl.textContent = "Enhanced with " + this.taskSelect.value + " template (text-only)";
+                this.statusEl.textContent = "Enhanced with " + this.taskSelect.value + " template" + (imageBase64 ? " (with image)" : "");
             } else {
                 this.statusEl.textContent = "Failed: " + (data.error || "Unknown error");
             }
@@ -907,7 +957,20 @@ class BerniniEnhancerEditor {
             }
             this.layoutBtn.textContent = "Layout";
         }
+        // Reset manual widget height on layout change so it can recalculate based on the new layout
+        const widget = (this.node.widgets || []).find(w => w.name === "bernini_enhancer_editor");
+        if (widget) {
+            widget.customHeight = undefined;
+        }
+
         requestAnimationFrame(() => {
+            if (widget && this.node.size) {
+                const horizontalMargin = 30;
+                widget.width = Math.max(200, this.node.size[0] - horizontalMargin);
+                if (widget.element) {
+                    widget.element.style.width = widget.width + "px";
+                }
+            }
             if (this.node.computeSize && this.node.size) this.node.size[1] = this.node.computeSize()[1];
             if (this.node.graph) this.node.graph.setDirtyCanvas(true, true);
         });
@@ -961,6 +1024,33 @@ class BerniniEnhancerEditor {
             this.prependCheck.checked = this.prependSysWidget.value !== false;
         }
         this._updateTaskDisplay();
+        this._updateImageIndicator();
+    }
+
+    _getMinHeight() {
+        const ed = this.root;
+        if (!ed) return 400;
+
+        const origHeight = ed.style.height;
+        ed.style.height = "auto";
+
+        let origPromptHeight, origNegHeight;
+        if (this.promptArea) {
+            origPromptHeight = this.promptArea.style.height;
+            this.promptArea.style.height = "";
+        }
+        if (this.negArea) {
+            origNegHeight = this.negArea.style.height;
+            this.negArea.style.height = "";
+        }
+
+        const height = ed.scrollHeight;
+
+        ed.style.height = origHeight;
+        if (this.promptArea) this.promptArea.style.height = origPromptHeight;
+        if (this.negArea) this.negArea.style.height = origNegHeight;
+
+        return height;
     }
 }
 
@@ -978,10 +1068,10 @@ app.registerExtension({
                 for (const name of HIDDEN_WIDGETS) hideWidget(findWidget(this, name));
 
                 const mount = document.createElement("div");
-                mount.style.cssText = "width:100%;box-sizing:border-box;";
+                mount.style.cssText = "width:100%;height:100%;box-sizing:border-box;";
                 const getEditorHeight = () => {
-                    const ed = mount.firstElementChild;
-                    return ed ? ed.scrollHeight : 400;
+                    const editor = this._berniniEnhancerEditor;
+                    return editor ? editor._getMinHeight() : 400;
                 };
 
                 const editorWidget = this.addDOMWidget("bernini_enhancer_editor", "div", mount, {
@@ -989,13 +1079,25 @@ app.registerExtension({
                 });
                 if (editorWidget) {
                     editorWidget.computeSize = function (width) {
-                        return [width, getEditorHeight()];
+                        const minHeight = getEditorHeight();
+                        if (editorWidget.customHeight) {
+                            return [width, Math.max(minHeight, editorWidget.customHeight)];
+                        }
+                        return [width, minHeight];
                     };
                 }
 
                 new BerniniEnhancerEditor(this, mount);
 
                 requestAnimationFrame(() => {
+                    const widget = (this.widgets || []).find(w => w.name === "bernini_enhancer_editor");
+                    if (widget && this.size) {
+                        const horizontalMargin = 30;
+                        widget.width = Math.max(200, this.size[0] - horizontalMargin);
+                        if (widget.element) {
+                            widget.element.style.width = widget.width + "px";
+                        }
+                    }
                     if (this.computeSize && this.size) this.size[1] = this.computeSize()[1];
                     if (this.graph) this.graph.setDirtyCanvas(true, true);
                 });
@@ -1010,6 +1112,20 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function (data) {
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             if (this._berniniEnhancerEditor) {
+                const widget = (this.widgets || []).find(w => w.name === "bernini_enhancer_editor");
+                if (widget && this.size) {
+                    const titleHeight = this.title_height || 30;
+                    const bottomMargin = 15;
+                    const minHeight = this._berniniEnhancerEditor._getMinHeight();
+                    const availableHeight = this.size[1] - titleHeight - bottomMargin;
+                    widget.customHeight = Math.max(minHeight, availableHeight);
+
+                    const horizontalMargin = 30;
+                    widget.width = Math.max(200, this.size[0] - horizontalMargin);
+                    if (widget.element) {
+                        widget.element.style.width = widget.width + "px";
+                    }
+                }
                 requestAnimationFrame(() => {
                     this._berniniEnhancerEditor._syncFromWidgets();
                     if (this.computeSize && this.size) this.size[1] = this.computeSize()[1];
@@ -1017,6 +1133,34 @@ app.registerExtension({
                 });
             }
             return r;
+        };
+
+        const onResize = nodeType.prototype.onResize;
+        nodeType.prototype.onResize = function (size) {
+            if (onResize) onResize.apply(this, arguments);
+            const widget = (this.widgets || []).find(w => w.name === "bernini_enhancer_editor");
+            if (widget) {
+                const horizontalMargin = 30;
+                widget.width = Math.max(200, size[0] - horizontalMargin);
+                
+                if (widget.element) {
+                    widget.element.style.width = widget.width + "px";
+                    
+                    let yOffset = widget.last_y;
+                    if (!yOffset) {
+                        yOffset = this.title_height || 30;
+                    }
+                    const bottomMargin = 15;
+                    const remainingHeight = size[1] - yOffset - bottomMargin;
+                    
+                    const editor = this._berniniEnhancerEditor;
+                    const minHeight = editor ? editor._getMinHeight() : 400;
+                    const finalHeight = Math.max(minHeight, remainingHeight);
+                    
+                    widget.element.style.height = finalHeight + "px";
+                    widget.customHeight = finalHeight;
+                }
+            }
         };
     },
 });

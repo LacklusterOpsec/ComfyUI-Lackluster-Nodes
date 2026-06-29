@@ -8,10 +8,15 @@ into detailed editing/generation prompts.
 Standalone -- no dependencies on ComfyUI-BerniniStudio.
 """
 
+import base64
 import json
 import logging
 import os
 import re
+from io import BytesIO
+
+import numpy as np
+from PIL import Image as PILImage
 
 log = logging.getLogger("BerniniPromptEnhancer")
 
@@ -317,6 +322,10 @@ class BerniniPromptEnhancer:
                 }),
             },
             "optional": {
+                "image": ("IMAGE", {
+                    "tooltip": "Input image for vision-enabled LLM enhancement (i2i, i2v, etc.). "
+                               "Converted to base64 and sent to multimodal models.",
+                }),
                 "negative_prompt": ("STRING", {
                     "default": "",
                     "multiline": True,
@@ -364,6 +373,7 @@ class BerniniPromptEnhancer:
         ollama_model="",
         api_format="Ollama",
         auto_enhance=False,
+        image=None,
         negative_prompt="",
         temperature=0.7,
         max_tokens=2048,
@@ -381,6 +391,7 @@ class BerniniPromptEnhancer:
             enhanced = _server_enhance(
                 working_prompt, task_type, ollama_url, ollama_model,
                 api_format, temperature, max_tokens, seed, unload_ollama,
+                image=image,
             )
             if enhanced:
                 if prepend_system_prompt:
@@ -403,8 +414,17 @@ class BerniniPromptEnhancer:
         return (working_prompt, neg_prompt)
 
 
+def _tensor_to_base64(image_tensor):
+    i = image_tensor[0].cpu().numpy() * 255
+    img = PILImage.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
 def _server_enhance(user_prompt, task_type, url, model, api_format,
-                    temperature=0.7, max_tokens=2048, seed=0, unload_ollama=False):
+                    temperature=0.7, max_tokens=2048, seed=0, unload_ollama=False,
+                    image=None):
     import urllib.request
     import urllib.error
 
@@ -413,16 +433,22 @@ def _server_enhance(user_prompt, task_type, url, model, api_format,
     formatted = template.format(user_prompt=user_prompt, image_num=1)
     sys_prompt = _get_system_prompt(task_type)
 
+    image_b64 = _tensor_to_base64(image) if image is not None else None
+
     if api_format == "Ollama":
         options = {"temperature": temperature, "num_ctx": 8192}
         if seed > 0:
             options["seed"] = seed
+        messages = [
+            {"role": "system", "content": sys_prompt},
+        ]
+        user_msg = {"role": "user", "content": formatted}
+        if image_b64:
+            user_msg["images"] = [image_b64]
+        messages.append(user_msg)
         payload = {
             "model": model,
-            "messages": [
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": formatted},
-            ],
+            "messages": messages,
             "stream": False,
             "options": options,
         }
@@ -430,11 +456,17 @@ def _server_enhance(user_prompt, task_type, url, model, api_format,
             payload["keep_alive"] = 0
         endpoint = f"{url}/api/chat"
     else:
+        user_content = [{"type": "text", "text": formatted}]
+        if image_b64:
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+            })
         payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": formatted},
+                {"role": "user", "content": user_content},
             ],
             "stream": False,
         }
@@ -556,6 +588,7 @@ try:
         temperature = data.get("temperature", 0.7)
         max_tokens = data.get("max_tokens", 2048)
         seed_val = data.get("seed", 0)
+        image_b64 = data.get("image", None)
 
         custom_template = data.get("custom_template", "")
         template = custom_template if custom_template.strip() else _get_enhance_template(task_type)
@@ -566,12 +599,16 @@ try:
             options = {"temperature": temperature, "num_ctx": 8192}
             if seed_val > 0:
                 options["seed"] = seed_val
+            messages = [
+                {"role": "system", "content": sys_prompt},
+            ]
+            user_msg = {"role": "user", "content": formatted_prompt}
+            if image_b64:
+                user_msg["images"] = [image_b64]
+            messages.append(user_msg)
             payload = {
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": formatted_prompt},
-                ],
+                "messages": messages,
                 "stream": False,
                 "options": options,
             }
@@ -579,11 +616,17 @@ try:
                 payload["keep_alive"] = 0
             endpoint = f"{url}/api/chat"
         else:
+            user_content = [{"type": "text", "text": formatted_prompt}]
+            if image_b64:
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                })
             payload = {
                 "model": model,
                 "messages": [
                     {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": formatted_prompt},
+                    {"role": "user", "content": user_content},
                 ],
                 "stream": False,
             }
