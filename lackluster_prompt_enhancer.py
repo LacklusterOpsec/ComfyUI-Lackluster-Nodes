@@ -322,9 +322,21 @@ class LacklusterPromptEnhancer:
                 }),
             },
             "optional": {
-                "image": ("IMAGE", {
-                    "tooltip": "Input image for vision-enabled LLM enhancement (i2i, i2v, etc.). "
-                               "Converted to base64 and sent to multimodal models.",
+                "image0": ("IMAGE", {
+                    "tooltip": "Reference image slot 0 = 'image0' in your prompt. "
+                               "Converted to base64 and sent to multimodal LLMs.",
+                }),
+                "image1": ("IMAGE", {
+                    "tooltip": "Reference image slot 1. Use 'image1' in your prompt.",
+                }),
+                "image2": ("IMAGE", {
+                    "tooltip": "Reference image slot 2. Use 'image2' in your prompt.",
+                }),
+                "image3": ("IMAGE", {
+                    "tooltip": "Reference image slot 3. Use 'image3' in your prompt.",
+                }),
+                "image4": ("IMAGE", {
+                    "tooltip": "Reference image slot 4. Use 'image4' in your prompt.",
                 }),
                 "text_input": ("STRING", {
                     "forceInput": True,
@@ -378,7 +390,11 @@ class LacklusterPromptEnhancer:
         ollama_model="",
         api_format="Ollama",
         auto_enhance=False,
-        image=None,
+        image0=None,
+        image1=None,
+        image2=None,
+        image3=None,
+        image4=None,
         text_input="",
         negative_prompt="",
         temperature=0.7,
@@ -391,13 +407,17 @@ class LacklusterPromptEnhancer:
         working_prompt = (text_input if text_input.strip() else prompt).strip()
         neg_prompt = negative_prompt.strip() if negative_prompt.strip() else DEFAULT_NEG_PROMPT
 
+        # Collect all connected images (skip None slots)
+        wired = [image0, image1, image2, image3, image4]
+        images = [img for img in wired if img is not None]
+
         if auto_enhance and ollama_model and working_prompt:
             log.info("[LacklusterPromptEnhancer] Auto-enhance triggered (model=%s, task=%s)",
                      ollama_model, task_type)
             enhanced = _server_enhance(
                 working_prompt, task_type, ollama_url, ollama_model,
                 api_format, temperature, max_tokens, seed, unload_ollama,
-                image=image,
+                images=images,
             )
             if enhanced:
                 if prepend_system_prompt:
@@ -421,6 +441,7 @@ class LacklusterPromptEnhancer:
 
 
 def _tensor_to_base64(image_tensor):
+    """Convert a single image tensor [1,H,W,C] to a base64-encoded PNG string."""
     i = image_tensor[0].cpu().numpy() * 255
     img = PILImage.fromarray(np.clip(i, 0, 255).astype(np.uint8))
     buf = BytesIO()
@@ -428,18 +449,31 @@ def _tensor_to_base64(image_tensor):
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
+def _images_to_b64_list(images):
+    """Convert a list of image tensors to a list of base64-encoded PNG strings."""
+    result = []
+    for img_tensor in images:
+        if img_tensor is not None:
+            result.append(_tensor_to_base64(img_tensor))
+    return result
+
+
 def _server_enhance(user_prompt, task_type, url, model, api_format,
                     temperature=0.7, max_tokens=2048, seed=0, unload_ollama=False,
-                    image=None):
+                    images=None):
+    """Server-side prompt enhancement via Ollama/vLLM. Sends all connected
+    images to vision-capable models."""
     import urllib.request
     import urllib.error
 
     url = url.rstrip("/")
-    template = _get_enhance_template(task_type)
-    formatted = template.format(user_prompt=user_prompt, image_num=1)
-    sys_prompt = _get_system_prompt(task_type)
+    images = images or []
+    images_b64 = _images_to_b64_list(images)
+    image_num = len(images_b64) if images_b64 else 1
 
-    image_b64 = _tensor_to_base64(image) if image is not None else None
+    template = _get_enhance_template(task_type)
+    formatted = template.format(user_prompt=user_prompt, image_num=image_num)
+    sys_prompt = _get_system_prompt(task_type)
 
     if api_format == "Ollama":
         options = {"temperature": temperature, "num_ctx": 8192}
@@ -449,8 +483,8 @@ def _server_enhance(user_prompt, task_type, url, model, api_format,
             {"role": "system", "content": sys_prompt},
         ]
         user_msg = {"role": "user", "content": formatted}
-        if image_b64:
-            user_msg["images"] = [image_b64]
+        if images_b64:
+            user_msg["images"] = images_b64
         messages.append(user_msg)
         payload = {
             "model": model,
@@ -463,11 +497,12 @@ def _server_enhance(user_prompt, task_type, url, model, api_format,
         endpoint = f"{url}/api/chat"
     else:
         user_content = [{"type": "text", "text": formatted}]
-        if image_b64:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-            })
+        if images_b64:
+            for img_b64 in images_b64:
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                })
         payload = {
             "model": model,
             "messages": [
@@ -589,12 +624,17 @@ try:
 
         task_type = data.get("task_type", "default")
         api_format = data.get("api_format", "Ollama")
-        image_num = data.get("image_num", 1)
         unload_ollama = data.get("unload_ollama", False)
         temperature = data.get("temperature", 0.7)
         max_tokens = data.get("max_tokens", 2048)
         seed_val = data.get("seed", 0)
-        image_b64 = data.get("image", None)
+
+        # Accept both the old single "image" field and a list of "images"
+        images_b64 = data.get("images", [])
+        single_image = data.get("image", None)
+        if not images_b64 and single_image:
+            images_b64 = [single_image]
+        image_num = data.get("image_num", len(images_b64) if images_b64 else 1)
 
         custom_template = data.get("custom_template", "")
         template = custom_template if custom_template.strip() else _get_enhance_template(task_type)
@@ -609,8 +649,14 @@ try:
                 {"role": "system", "content": sys_prompt},
             ]
             user_msg = {"role": "user", "content": formatted_prompt}
-            if image_b64:
-                user_msg["images"] = [image_b64]
+            if images_b64:
+                # Ollama expects raw base64 (no data: prefix) in the images field
+                clean_images = []
+                for img in images_b64:
+                    if img.startswith("data:"):
+                        img = img.split(",", 1)[-1]
+                    clean_images.append(img)
+                user_msg["images"] = clean_images
             messages.append(user_msg)
             payload = {
                 "model": model,
@@ -622,12 +668,15 @@ try:
                 payload["keep_alive"] = 0
             endpoint = f"{url}/api/chat"
         else:
-            user_content = [{"type": "text", "text": formatted_prompt}]
-            if image_b64:
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-                })
+            user_content = []
+            if images_b64:
+                for img_b64 in images_b64:
+                    prefix = img_b64 if img_b64.startswith("data:") else f"data:image/png;base64,{img_b64}"
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": prefix},
+                    })
+            user_content.append({"type": "text", "text": formatted_prompt})
             payload = {
                 "model": model,
                 "messages": [
