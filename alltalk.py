@@ -3,10 +3,62 @@ ComfyUI node for AllTalk TTS - makes requests to an existing AllTalk installatio
 """
 import requests
 import os
+import json
 from pathlib import Path
 import folder_paths
 import struct
 import numpy as np
+
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "alltalk_config.json")
+DEFAULT_VOICES_DIR = r"C:\Tavern\alltalk\voices"
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[AllTalk TTS] Error reading config file: {e}")
+    return {}
+
+def save_config(config_data):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=4)
+    except Exception as e:
+        print(f"[AllTalk TTS] Error writing config file: {e}")
+
+def get_alltalk_voices(voices_dir=None):
+    if not voices_dir:
+        config = load_config()
+        voices_dir = config.get("voices_dir", DEFAULT_VOICES_DIR)
+        
+    voices = []
+    # Try the specified directory
+    if os.path.exists(voices_dir):
+        try:
+            for entry in os.scandir(voices_dir):
+                if entry.is_file() and entry.name.lower().endswith(".wav"):
+                    voices.append(entry.name)
+        except Exception as e:
+            print(f"[AllTalk TTS] Error reading voices directory {voices_dir}: {e}")
+            
+    # If not found or empty, try the default directory as backup
+    if not voices and voices_dir != DEFAULT_VOICES_DIR:
+        if os.path.exists(DEFAULT_VOICES_DIR):
+            try:
+                for entry in os.scandir(DEFAULT_VOICES_DIR):
+                    if entry.is_file() and entry.name.lower().endswith(".wav"):
+                        voices.append(entry.name)
+            except Exception as e:
+                print(f"[AllTalk TTS] Error reading default voices directory {DEFAULT_VOICES_DIR}: {e}")
+            
+    if not voices:
+        # Fallback default voices if folders are empty or not found
+        voices = ["female_01.wav", "female_02.wav", "female_03.wav", "male_01.wav", "male_02.wav"]
+        
+    voices.sort()
+    return voices
 
 class AllTalkTTSNode:
     """
@@ -21,14 +73,21 @@ class AllTalkTTSNode:
     @classmethod
     def INPUT_TYPES(cls):
         """Define input parameters for the node"""
+        config = load_config()
+        voices_dir = config.get("voices_dir", DEFAULT_VOICES_DIR)
+        voices_list = get_alltalk_voices(voices_dir)
+        
+        default_voice = "female_01.wav" if "female_01.wav" in voices_list else (voices_list[0] if voices_list else "female_01.wav")
+        default_narrator = "male_01.wav" if "male_01.wav" in voices_list else (voices_list[0] if voices_list else "male_01.wav")
+
         return {
             "required": {
                 "text": ("STRING", {
                     "multiline": True,
                     "default": "Hello, this is a test."
                 }),
-                "character_voice": ("STRING", {
-                    "default": "female_1"
+                "character_voice": (voices_list, {
+                    "default": default_voice
                 }),
                 "language": (["auto", "en", "es", "fr", "de", "it", "pt", "nl", "ru", "ja", "zh", "ko"], {
                     "default": "auto"
@@ -65,11 +124,19 @@ class AllTalkTTSNode:
                 "narrator_enabled": (["false", "true", "silent"], {
                     "default": "false"
                 }),
-                "narrator_voice": ("STRING", {
-                    "default": "male_1"
+                "narrator_voice": (voices_list, {
+                    "default": default_narrator
+                }),
+                "voices_dir": ("STRING", {
+                    "default": voices_dir
                 }),
             }
         }
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        import time
+        return time.time()
     
     RETURN_TYPES = ("AUDIO", "STRING")
     RETURN_NAMES = ("audio", "audio_path")
@@ -268,10 +335,18 @@ class AllTalkTTSNode:
     
     def generate_tts(self, text, character_voice, language, speed, temperature, 
                      repetition_penalty, pitch, alltalk_server_url, 
-                     narrator_enabled="false", narrator_voice="male_1"):
+                     narrator_enabled="false", narrator_voice="male_01.wav",
+                     voices_dir="C:\\Tavern\\alltalk\\voices"):
         """
         Generate TTS audio by making a request to AllTalk server
         """
+        
+        # Check if voices_dir has changed and save to config
+        config = load_config()
+        if config.get("voices_dir") != voices_dir:
+            config["voices_dir"] = voices_dir
+            save_config(config)
+            print(f"[AllTalk TTS] Voices directory updated to: {voices_dir}. Please refresh your browser page to reload the voices dropdown list.")
         
         # Validate server URL
         if not alltalk_server_url.startswith("http"):

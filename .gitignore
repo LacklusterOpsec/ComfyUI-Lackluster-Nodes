@@ -52,7 +52,18 @@ Thumbs.db
 *.mp3
 *.ogg
 
-# Node modules & JS build
+# Node modules & JS build artifacts
 node_modules/
 dist/
 *.js.map
+js/lackluster_qwen_multiangle.js
+js/lackluster_shot_queue.js
+js/lackluster_shot_queue_v2.js
+js/lackluster_prompt_enhancer.js
+js/assets/
+
+# Generated config (user-specific paths)
+alltalk_config.json
+
+# Temp / accidental files
+h
