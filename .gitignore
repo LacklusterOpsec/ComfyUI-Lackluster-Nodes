@@ -24,6 +24,14 @@ wheels/
 venv/
 env/
 ENV/
+.venv/
+.venv*/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
 
 # IDE
 .vscode/
@@ -36,10 +44,15 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Logs
+*.log
+
 # ComfyUI output
 *.wav
 *.mp3
 *.ogg
 
-# Node modules (if using package.json in future)
+# Node modules & JS build
 node_modules/
+dist/
+*.js.map

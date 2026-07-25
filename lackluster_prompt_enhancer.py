@@ -556,6 +556,8 @@ try:
     from aiohttp import web
     import aiohttp
 
+    if PromptServer.instance is None:
+        raise AttributeError("PromptServer not yet initialized")
     _routes = PromptServer.instance.routes
 
     @_routes.post("/bernini_enhancer/models")
@@ -771,5 +773,5 @@ try:
             "task_type": task,
         })
 
-except ImportError:
-    log.warning("[LacklusterEnhancer] PromptServer not available; server routes not registered.")
+except Exception as _e:
+    log.warning("[LacklusterEnhancer] PromptServer not available; server routes not registered. (%s: %s)", type(_e).__name__, _e)
